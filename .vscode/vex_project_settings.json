@@ -1,0 +1,18 @@
+{
+	"extension": {
+		"version": "0.6.0",
+		"json": 2
+	},
+	"project": {
+		"name": "BombSignitureV5",
+		"description": "",
+		"creationDate": "9/7/2024, 5:42:49 PM",
+		"platform": "IQ2",
+		"language": "python",
+		"slot": 1,
+		"sdkVersion": "IQ2_1_0_0_19",
+		"python": {
+			"main": "src/main.py"
+		}
+	}
+}
