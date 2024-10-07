@@ -7,8 +7,8 @@ leftDrive = Motor(Ports.PORT2, True)
 rightDrive = Motor(Ports.PORT8, False)
 intake1 = Motor(Ports.PORT1, False)
 intake2 = Motor(Ports.PORT7, True)
-flyWheel1 = Motor(Ports.PORT3, False)
-flyWheel2 = Motor(Ports.PORT9, True)
+flyWheel1 = Motor(Ports.PORT3, True)
+flyWheel2 = Motor(Ports.PORT9, False)
 loadedOptical = Optical(Ports.PORT1)
 pneumatic1 = Pneumatic(Ports.PORT11)
 pneumatic2 = Pneumatic(Ports.PORT6)
@@ -29,6 +29,7 @@ flywheelStatus = "off"
 slowmodeScale = 1
 shutdownTime = 900
 pumpStatus = "on"
+shootingMode = "low"
 
 # pid stuff
 desiredHeading = 0
@@ -87,12 +88,21 @@ def healthCheckPneumatics():
             wait(0.1, SECONDS)
 
 
-def calibrateInertial():
-    brain.screen.print("Calibrating Brain")
+vexcode_initial_drivetrain_calibration_completed = False
+def calibrate_drivetrain():
+    # Calibrate the Drivetrain Inertial
+    global vexcode_initial_drivetrain_calibration_completed
+    sleep(200, MSEC)
+    brain.screen.print("Calibrating")
+    brain.screen.next_row()
+    brain.screen.print("Inertial")
     MainInertial.calibrate()
-    wait(10,SECONDS)
+    sleep(20,SECONDS)
+    vexcode_initial_drivetrain_calibration_completed = True
     brain.screen.clear_screen()
+    brain.screen.set_cursor(1, 1)
 
+calibrate_drivetrain()
 
 def remoteControlLoop():
     global forwardInput, turnInput
@@ -109,8 +119,8 @@ def remoteControlLoop():
     leftDrive.spin(FORWARD)
     rightDrive.spin(FORWARD)
     while True:
-        forwardInput = (controller.axisA.position() * 100) * slowmodeScale
-        turnInput = (controller.axisC.position() * 100) * slowmodeScale
+        forwardInput = (controller.axisA.position() ) * slowmodeScale
+        turnInput = (controller.axisC.position()) * slowmodeScale
         if turnInput == 0:
             currentHeading = MainInertial.heading()
             error = desiredHeading - currentHeading
@@ -136,15 +146,25 @@ def remoteControlLoop():
 
 def shootBall():
     # requires flywheel to be oin
+    print("shooting ball")
     global flywheelStatus
     if flywheelStatus == "on":
-        pneumatic1.retract(CylinderType.CYLINDER1)
-        pneumatic2.retract(CylinderType.CYLINDER2)
+        pneumatic1.retract(CylinderType.CYLINDER2)
+        pneumatic2.retract(CylinderType.CYLINDER1)
         while controller.buttonLUp.pressing():
             wait(1,MSEC)
+        pneumatic1.extend(CylinderType.CYLINDER2)
+        pneumatic2.extend(CylinderType.CYLINDER1)
+def elevateFlywheel():
+    global shootingMode
+    if shootingMode == "low":
+        pneumatic1.extend(CylinderType.CYLINDER1)
+        pneumatic2.extend(CylinderType.CYLINDER2)
+        shootingMode = "high"
+    else:
         pneumatic1.retract(CylinderType.CYLINDER1)
         pneumatic2.retract(CylinderType.CYLINDER2)
-
+        shootingMode = "low"
 
 def updateFlyWheelStatus():
     global flywheelStatus
@@ -159,6 +179,7 @@ def updateFlyWheelStatus():
 
 def printDebugBrainValues():
     global flywheelStatus
+    global error, slowmodeScale
     brain.screen.set_font(FontType.MONO20)
     while True:
         brain.screen.clear_screen()
@@ -168,6 +189,10 @@ def printDebugBrainValues():
         brain.screen.print("F2: " + str(flyWheel2.velocity()))
         brain.screen.set_cursor(3, 1)
         brain.screen.print("FS: " + str(flywheelStatus))
+        brain.screen.set_cursor(4, 1)
+        brain.screen.print("ER: " + str(error))
+        brain.screen.set_cursor(5,1)
+        brain.screen.print("SC: " + str(slowmodeScale))
         wait(50, MSEC)
 
 def checkBallInIntake():
@@ -210,8 +235,11 @@ def flywheelOff():
 
 
 def manualSpin():
+    global flywheelStatus
     while controller.buttonEUp.pressing():
+        flywheelStatus = "on"
         flyWheel.spin(FORWARD)
+    flywheelStatus = "off"
     flyWheel.stop()
 
 
@@ -245,18 +273,19 @@ def tickTimer():
             wait(1,SECONDS)
         else:
             lockdown()
-#comment out for tournements, dont want risk screwing
+#comment out for tournements, dont want risk shutdown timer 
 
 #healthCheckPneumatics()
-calibrateInertial()
-#Thread(tickTimer)
+Thread(tickTimer)
 Thread(remoteControlLoop)
-Thread(updateFlyWheelStatus)
+#Thread(updateFlyWheelStatus)
 Thread(printDebugBrainValues)
 controller.buttonRUp.pressed(toggleIntake)
 controller.buttonRDown.pressed(stopIntake)
 controller.buttonLUp.pressed(shootBall)
-controller.buttonLDown.pressed(flywheelOff)
+controller.buttonLDown.pressed(elevateFlywheel)
 controller.buttonFUp.pressed(togglePump)
 controller.buttonEUp.pressed(manualSpin)
 controller.buttonEDown.pressed(togggleSlowMode)
+flyWheel.spin(FORWARD)
+flywheelStatus = "on"
