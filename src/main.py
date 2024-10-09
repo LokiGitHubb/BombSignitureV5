@@ -30,6 +30,7 @@ slowmodeScale = 1
 shutdownTime = 900
 pumpStatus = "on"
 shootingMode = "low"
+shotBalls = 0
 
 # pid stuff
 desiredHeading = 0
@@ -58,7 +59,7 @@ KI: Small details in the correction
 If the KI is too low, it will start drifting after moving for a long time
 If the KI is too high, the robot will become unstable, plus over correction
 """
-Kp = 1.0
+Kp = 0.9
 Ki = 0.1
 Kd = 0.05
 
@@ -67,6 +68,7 @@ turnInput = 0
 derivative = 0
 leftMotorSpeed = 0
 rightMotorSpeed = 0
+deadband = 20
 
 # motor settings
 flyWheel.set_max_torque(100, PERCENT)
@@ -90,6 +92,7 @@ def healthCheckPneumatics():
 
 vexcode_initial_drivetrain_calibration_completed = False
 def calibrate_drivetrain():
+    print("calibrating")
     # Calibrate the Drivetrain Inertial
     global vexcode_initial_drivetrain_calibration_completed
     sleep(200, MSEC)
@@ -97,7 +100,7 @@ def calibrate_drivetrain():
     brain.screen.next_row()
     brain.screen.print("Inertial")
     MainInertial.calibrate()
-    sleep(20,SECONDS)
+    sleep(8,SECONDS)
     vexcode_initial_drivetrain_calibration_completed = True
     brain.screen.clear_screen()
     brain.screen.set_cursor(1, 1)
@@ -113,6 +116,7 @@ def remoteControlLoop():
     global derivative
     global correction
     global leftMotorSpeed, rightMotorSpeed
+    global deadband
     global slowmodeScale
     leftDrive.set_velocity(leftMotorSpeed, PERCENT)
     rightDrive.set_velocity(rightMotorSpeed, PERCENT)
@@ -121,6 +125,11 @@ def remoteControlLoop():
     while True:
         forwardInput = (controller.axisA.position() ) * slowmodeScale
         turnInput = (controller.axisC.position()) * slowmodeScale
+        if abs(forwardInput) < deadband:
+            forwardInput = 0
+        
+        if abs(turnInput) < deadband:
+            turnInput = 0
         if turnInput == 0:
             currentHeading = MainInertial.heading()
             error = desiredHeading - currentHeading
@@ -142,13 +151,17 @@ def remoteControlLoop():
             rightDrive.set_velocity(rightMotorSpeed, PERCENT)
             leftDrive.spin(FORWARD)
             rightDrive.spin(FORWARD)
+        sleep(20,MSEC)
 
 
 def shootBall():
     # requires flywheel to be oin
     print("shooting ball")
     global flywheelStatus
+    global shotBalls
     if flywheelStatus == "on":
+        shotBalls += 1
+        print(str(shotBalls))
         pneumatic1.retract(CylinderType.CYLINDER2)
         pneumatic2.retract(CylinderType.CYLINDER1)
         while controller.buttonLUp.pressing():
@@ -156,6 +169,7 @@ def shootBall():
         pneumatic1.extend(CylinderType.CYLINDER2)
         pneumatic2.extend(CylinderType.CYLINDER1)
 def elevateFlywheel():
+    print("changing elevation")
     global shootingMode
     if shootingMode == "low":
         pneumatic1.extend(CylinderType.CYLINDER1)
@@ -201,6 +215,7 @@ def checkBallInIntake():
             intake.stop()
 
 def toggleIntake():
+    print("toggling intake")
     global intakeStatus
     if intakeStatus == "off":
         intake.spin(FORWARD)
@@ -210,6 +225,7 @@ def toggleIntake():
         intakeStatus = "out"
     elif intakeStatus == "out":
         intake.spin(FORWARD)
+        intakeStatus = "in"
 
 
 def stopIntake():
@@ -246,7 +262,7 @@ def manualSpin():
 def togggleSlowMode():
     global slowmodeScale
     if slowmodeScale == 1:
-        slowmodeScale = 0.5
+        slowmodeScale = 0.48
     else:
         slowmodeScale = 1
 
@@ -287,5 +303,6 @@ controller.buttonLDown.pressed(elevateFlywheel)
 controller.buttonFUp.pressed(togglePump)
 controller.buttonEUp.pressed(manualSpin)
 controller.buttonEDown.pressed(togggleSlowMode)
-flyWheel.spin(FORWARD)
 flywheelStatus = "on"
+while True:
+    flyWheel.spin(FORWARD)
