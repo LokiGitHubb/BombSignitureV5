@@ -3,15 +3,15 @@ from vex import *
 # devices
 brain = Brain()
 controller = Controller()
-leftDrive = Motor(Ports.PORT2, True)
+leftDrive = Motor(Ports.PORT6, True)
 rightDrive = Motor(Ports.PORT8, False)
-intake1 = Motor(Ports.PORT1, False)
-intake2 = Motor(Ports.PORT7, True)
-flyWheel1 = Motor(Ports.PORT3, True)
-flyWheel2 = Motor(Ports.PORT9, False)
+intake1 = Motor(Ports.PORT4, False)
+intake2 = Motor(Ports.PORT10, True)
+flyWheel1 = Motor(Ports.PORT5, True)
+flyWheel2 = Motor(Ports.PORT12, False)
 loadedOptical = Optical(Ports.PORT1)
-pneumatic1 = Pneumatic(Ports.PORT11)
-pneumatic2 = Pneumatic(Ports.PORT6)
+pneumatic1 = Pneumatic(Ports.PORT7)
+pneumatic2 = Pneumatic(Ports.PORT1)
 Touch1 = Touchled(Ports.PORT1)
 Touch2 = Touchled(Ports.PORT1)
 intakeOptical = Optical(Ports.PORT1)
@@ -30,6 +30,7 @@ slowmodeScale = 1
 shutdownTime = 900
 pumpStatus = "on"
 shootingMode = "low"
+flywheelMode = "fast"
 shotBalls = 0
 
 # pid stuff
@@ -63,6 +64,9 @@ Kp = 0.9
 Ki = 0.1
 Kd = 0.05
 
+DEFAULTVELOCITY = 100
+PASSVELOCITY = 50
+
 forwardInput = 0
 turnInput = 0
 derivative = 0
@@ -72,11 +76,11 @@ deadband = 20
 
 # motor settings
 flyWheel.set_max_torque(100, PERCENT)
-flyWheel.set_velocity(100, PERCENT)
+flyWheel.set_velocity(DEFAULTVELOCITY, PERCENT)
 intake.set_max_torque(100, PERCENT)
 intake.set_velocity(100, PERCENT)
 pneumatic1.pump_on()
-pneumatic2.pump_on
+pneumatic2.pump_on()
 intakeOptical.set_light_power(100, PercentUnits.PERCENT)
 intakeOptical.set_light(LedStateType.ON)
 loadedOptical.set_light_power(100, PercentUnits.PERCENT)
@@ -162,34 +166,23 @@ def shootBall():
     if flywheelStatus == "on":
         shotBalls += 1
         print(str(shotBalls))
-        pneumatic1.retract(CylinderType.CYLINDER2)
-        pneumatic2.retract(CylinderType.CYLINDER1)
+        pneumatic1.retract(CylinderType.CYLINDER1)
+        pneumatic2.retract(CylinderType.CYLINDER2)
         while controller.buttonLUp.pressing():
             wait(1,MSEC)
-        pneumatic1.extend(CylinderType.CYLINDER2)
-        pneumatic2.extend(CylinderType.CYLINDER1)
+        pneumatic1.extend(CylinderType.CYLINDER1)
+        pneumatic2.extend(CylinderType.CYLINDER2)
 def elevateFlywheel():
     print("changing elevation")
     global shootingMode
     if shootingMode == "low":
-        pneumatic1.extend(CylinderType.CYLINDER1)
-        pneumatic2.extend(CylinderType.CYLINDER2)
+        pneumatic1.extend(CylinderType.CYLINDER2)
+        pneumatic2.extend(CylinderType.CYLINDER1)
         shootingMode = "high"
     else:
-        pneumatic1.retract(CylinderType.CYLINDER1)
-        pneumatic2.retract(CylinderType.CYLINDER2)
+        pneumatic1.retract(CylinderType.CYLINDER2)
+        pneumatic2.retract(CylinderType.CYLINDER1)
         shootingMode = "low"
-
-def updateFlyWheelStatus():
-    global flywheelStatus
-    while True:
-        if intakeOptical.is_near_object() or loadedOptical.is_near_object():
-            flywheelStatus = "on"
-            flyWheel.spin(FORWARD)
-        else:
-            flywheelStatus = "off"
-            flyWheel.stop()
-
 
 def printDebugBrainValues():
     global flywheelStatus
@@ -216,7 +209,7 @@ def checkBallInIntake():
 
 def toggleIntake():
     print("toggling intake")
-    global intakeStatus
+    global intakeStatus 
     if intakeStatus == "off":
         intake.spin(FORWARD)
         intakeStatus = "in"
@@ -232,19 +225,6 @@ def stopIntake():
     global intakeStatus
     intake.stop()
     intakeStatus = "off"
-
-def togglePump():
-    global pumpStatus
-    if pumpStatus == "on":
-        pneumatic1.pump_off()
-        pneumatic2.pump_off()
-
-        pumpStatus = "off"
-    else:
-        pumpStatus = "on"
-        pneumatic1.pump_off()
-        pneumatic2.pump_on()
-
 
 def flywheelOff():
     flyWheel.stop()
@@ -281,6 +261,26 @@ def lockdown():
     Thread(playSounds)
     Thread(lockmotors)
 
+def toggleFlyWheel():
+    global flywheelStatus
+    if flywheelStatus == "off":
+        flywheelStatus = "on"
+        flyWheel.spin(FORWARD)
+    else:
+        flywheelStatus = "off"
+        flyWheel.stop()
+
+def toggleFlywheelSpeed():
+    global flywheelMode, flywheelStatus
+    global DEFAULTVELOCITY, PASSVELOCITY
+    if flywheelMode == "fast":
+        flywheelMode = "slow"
+
+        flyWheel.set_velocity(50,PERCENT)
+    else:
+        flywheelMode = "fast"
+        flyWheel.set_velocity(DEFAULTVELOCITY,PERCENT)
+
 def tickTimer():
     global shutdownTime
     while True:
@@ -289,6 +289,7 @@ def tickTimer():
             wait(1,SECONDS)
         else:
             lockdown()
+
 #comment out for tournements, dont want risk shutdown timer 
 
 #healthCheckPneumatics()
@@ -300,9 +301,7 @@ controller.buttonRUp.pressed(toggleIntake)
 controller.buttonRDown.pressed(stopIntake)
 controller.buttonLUp.pressed(shootBall)
 controller.buttonLDown.pressed(elevateFlywheel)
-controller.buttonFUp.pressed(togglePump)
 controller.buttonEUp.pressed(manualSpin)
 controller.buttonEDown.pressed(togggleSlowMode)
-flywheelStatus = "on"
-while True:
-    flyWheel.spin(FORWARD)
+controller.buttonFUp.pressed(toggleFlywheelSpeed)
+controller.buttonFDown.pressed(toggleFlyWheel)
