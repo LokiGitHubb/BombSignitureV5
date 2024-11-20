@@ -3,18 +3,18 @@ from vex import *
 # devices
 brain = Brain()
 controller = Controller()
-leftDrive = Motor(Ports.PORT6, True)
-rightDrive = Motor(Ports.PORT8, False)
-intake1 = Motor(Ports.PORT4, False)
-intake2 = Motor(Ports.PORT10, True)
-flyWheel1 = Motor(Ports.PORT5, True)
-flyWheel2 = Motor(Ports.PORT12, False)
-loadedOptical = Optical(Ports.PORT1)
-pneumatic1 = Pneumatic(Ports.PORT7)
-pneumatic2 = Pneumatic(Ports.PORT1)
-Touch1 = Touchled(Ports.PORT1)
-Touch2 = Touchled(Ports.PORT1)
-intakeOptical = Optical(Ports.PORT1)
+leftDrive = Motor(Ports.PORT1, True)
+rightDrive = Motor(Ports.PORT6, False)
+intake1 = Motor(Ports.PORT9, True)
+intake2 = Motor(Ports.PORT12, False)
+flyWheel1 = Motor(Ports.PORT7, False)
+flyWheel2 = Motor(Ports.PORT8, True)
+loadedOptical = Optical(Ports.PORT2)
+pneumatic1 = Pneumatic(Ports.PORT2)
+pneumatic2 = Pneumatic(Ports.PORT10) 
+Touch1 = Touchled(Ports.PORT12)
+Touch2 = Touchled(Ports.PORT12)
+intakeOptical = Optical(Ports.PORT12)
 MainInertial = Inertial()
 controller = Controller()
 
@@ -32,6 +32,7 @@ pumpStatus = "on"
 shootingMode = "low"
 flywheelMode = "fast"
 shotBalls = 0
+autoStopIntake = False
 
 # pid stuff
 desiredHeading = 0
@@ -60,11 +61,11 @@ KI: Small details in the correction
 If the KI is too low, it will start drifting after moving for a long time
 If the KI is too high, the robot will become unstable, plus over correction
 """
-Kp = 0.9
+Kp = 0.958
 Ki = 0.1
 Kd = 0.05
 
-DEFAULTVELOCITY = 100
+DEFAULTVELOCITY = 86.0025
 PASSVELOCITY = 50
 
 forwardInput = 0
@@ -81,10 +82,10 @@ intake.set_max_torque(100, PERCENT)
 intake.set_velocity(100, PERCENT)
 pneumatic1.pump_on()
 pneumatic2.pump_on()
-intakeOptical.set_light_power(100, PercentUnits.PERCENT)
-intakeOptical.set_light(LedStateType.ON)
-loadedOptical.set_light_power(100, PercentUnits.PERCENT)
-loadedOptical.set_light(LedStateType.ON)
+intakeOptical.set_light_power(0, PercentUnits.PERCENT)
+intakeOptical.set_light(LedStateType.OFF)
+loadedOptical.set_light_power(0, PercentUnits.PERCENT)
+loadedOptical.set_light(LedStateType.OFF)
 
 def healthCheckPneumatics():
     brain.screen.set_font(FontType.MONO20)
@@ -128,7 +129,7 @@ def remoteControlLoop():
     rightDrive.spin(FORWARD)
     while True:
         forwardInput = (controller.axisA.position() ) * slowmodeScale
-        turnInput = (controller.axisC.position()) * slowmodeScale
+        turnInput = (controller.axisC.position()) * slowmodeScale * -1
         if abs(forwardInput) < deadband:
             forwardInput = 0
         
@@ -155,7 +156,7 @@ def remoteControlLoop():
             rightDrive.set_velocity(rightMotorSpeed, PERCENT)
             leftDrive.spin(FORWARD)
             rightDrive.spin(FORWARD)
-        sleep(20,MSEC)
+        sleep(10,MSEC)
 
 
 def shootBall():
@@ -167,21 +168,23 @@ def shootBall():
         shotBalls += 1
         print(str(shotBalls))
         pneumatic1.retract(CylinderType.CYLINDER1)
-        pneumatic2.retract(CylinderType.CYLINDER2)
+        pneumatic2.retract(CylinderType.CYLINDER1)
         while controller.buttonLUp.pressing():
             wait(1,MSEC)
         pneumatic1.extend(CylinderType.CYLINDER1)
-        pneumatic2.extend(CylinderType.CYLINDER2)
+        pneumatic2.extend(CylinderType.CYLINDER1)
 def elevateFlywheel():
     print("changing elevation")
     global shootingMode
     if shootingMode == "low":
         pneumatic1.extend(CylinderType.CYLINDER2)
-        pneumatic2.extend(CylinderType.CYLINDER1)
+        pneumatic2.extend(CylinderType.CYLINDER2)
+        flyWheel.set_velocity(DEFAULTVELOCITY,PERCENT)
         shootingMode = "high"
     else:
+        flyWheel.set_velocity((DEFAULTVELOCITY - 5),PERCENT)
         pneumatic1.retract(CylinderType.CYLINDER2)
-        pneumatic2.retract(CylinderType.CYLINDER1)
+        pneumatic2.retract(CylinderType.CYLINDER2)
         shootingMode = "low"
 
 def printDebugBrainValues():
@@ -201,11 +204,6 @@ def printDebugBrainValues():
         brain.screen.set_cursor(5,1)
         brain.screen.print("SC: " + str(slowmodeScale))
         wait(50, MSEC)
-
-def checkBallInIntake():
-    if intakeOptical.is_near_object():
-        if loadedOptical.is_near_object():
-            intake.stop()
 
 def toggleIntake():
     print("toggling intake")
@@ -290,18 +288,46 @@ def tickTimer():
         else:
             lockdown()
 
+def toggleIntakeLock():
+    global autoStopIntake
+    autoStopIntake = not autoStopIntake
+
+
+stopDebounce = False
+def updateAutoLockIntake():
+    global autoStopIntake
+    global stopDebounce
+    while True:
+        if autoStopIntake:
+            loadedOptical.set_light_power(100,PERCENT)
+            intakeOptical.set_light_power(100,PERCENT)
+            loadedOptical.set_light(LedStateType.ON)
+            loadedOptical.set_light(LedStateType.ON)
+            if loadedOptical.is_near_object() and intakeOptical.is_near_object():
+                if stopDebounce == False:
+                    stopDebounce = True
+                    stopIntake()
+                    while not intakeStatus == "in":
+                        wait(10,MSEC)
+                    stopDebounce = False
+        else:
+            loadedOptical.set_light_power(0,PERCENT)
+            intakeOptical.set_light_power(0,PERCENT)
+            loadedOptical.set_light(LedStateType.OFF)
+            loadedOptical.set_light(LedStateType.OFF)
+
 #comment out for tournements, dont want risk shutdown timer 
 
-#healthCheckPneumatics()
+healthCheckPneumatics()
 Thread(tickTimer)
+Thread(updateAutoLockIntake)
 Thread(remoteControlLoop)
-#Thread(updateFlyWheelStatus)
 Thread(printDebugBrainValues)
 controller.buttonRUp.pressed(toggleIntake)
 controller.buttonRDown.pressed(stopIntake)
 controller.buttonLUp.pressed(shootBall)
 controller.buttonLDown.pressed(elevateFlywheel)
-controller.buttonEUp.pressed(manualSpin)
+controller.buttonEUp.pressed(toggleIntakeLock)
 controller.buttonEDown.pressed(togggleSlowMode)
 controller.buttonFUp.pressed(toggleFlywheelSpeed)
 controller.buttonFDown.pressed(toggleFlyWheel)
