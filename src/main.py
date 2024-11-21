@@ -3,10 +3,10 @@ from vex import *
 # devices
 brain = Brain()
 controller = Controller()
-leftDrive = Motor(Ports.PORT1, True)
-rightDrive = Motor(Ports.PORT6, False)
-intake1 = Motor(Ports.PORT9, True)
-intake2 = Motor(Ports.PORT12, False)
+leftDrive = Motor(Ports.PORT1, False)
+rightDrive = Motor(Ports.PORT6, True)
+intake1 = Motor(Ports.PORT9, False)
+intake2 = Motor(Ports.PORT12, True)
 flyWheel1 = Motor(Ports.PORT7, False)
 flyWheel2 = Motor(Ports.PORT8, True)
 loadedOptical = Optical(Ports.PORT2)
@@ -18,7 +18,7 @@ intakeOptical = Optical(Ports.PORT12)
 MainInertial = Inertial()
 controller = Controller()
 
-# device sigma containers
+# device containers
 driveTrain = SmartDrive(leftDrive, rightDrive, MainInertial)
 flyWheel = MotorGroup(flyWheel1, flyWheel2)
 intake = MotorGroup(intake1, intake2)
@@ -61,7 +61,7 @@ KI: Small details in the correction
 If the KI is too low, it will start drifting after moving for a long time
 If the KI is too high, the robot will become unstable, plus over correction
 """
-Kp = 0.958
+Kp = 0.968
 Ki = 0.1
 Kd = 0.05
 
@@ -86,6 +86,36 @@ intakeOptical.set_light_power(0, PercentUnits.PERCENT)
 intakeOptical.set_light(LedStateType.OFF)
 loadedOptical.set_light_power(0, PercentUnits.PERCENT)
 loadedOptical.set_light(LedStateType.OFF)
+
+class ButtonBinding:
+    button:Controller.Button
+    callback:function
+
+class ControllerLayout:
+    def __init__(self, layoutTable:List, threadedList) -> None:
+        self.layoutTable = layoutTable
+        self.threadFunctionList = threadedList
+        self.status = "inactive"
+        self.connectionList = []
+        self.threadFunctionList = threadedList
+        self.threadList = []
+    def AddLayout(self, binding:ButtonBinding) -> None:
+        self.layoutTable.append(binding)
+
+    def BindButtons(self):
+        for buttonBinding in self.layoutTable:
+            newBinding = buttonBinding.button.pressed(buttonBinding.callback)
+            self.connectionList.append(newBinding)
+        for threadFunction in self.threadFunctionList:
+            newThread = Thread(threadFunction)
+            self.threadList.append(newThread)
+
+    layoutTable:List[ButtonBinding]
+    connectionList:List[Event]
+    threadFunctionList:List
+    threadList:List[Thread]
+    status:str
+        
 
 def healthCheckPneumatics():
     brain.screen.set_font(FontType.MONO20)
