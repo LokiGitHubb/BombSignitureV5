@@ -18,7 +18,7 @@ intakeOptical = Optical(Ports.PORT12)
 MainInertial = Inertial()
 controller = Controller()
 
-# device containers
+# device sigma containers
 driveTrain = SmartDrive(leftDrive, rightDrive, MainInertial)
 flyWheel = MotorGroup(flyWheel1, flyWheel2)
 intake = MotorGroup(intake1, intake2)
