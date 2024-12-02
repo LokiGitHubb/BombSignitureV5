@@ -6,7 +6,7 @@ controller = Controller()
 leftDrive = Motor(Ports.PORT1, False)
 rightDrive = Motor(Ports.PORT6, True)
 intake1 = Motor(Ports.PORT9, False)
-intake2 = Motor(Ports.PORT12, True)
+intake2 = Motor(Ports.PORT11, True)
 flyWheel1 = Motor(Ports.PORT7, False)
 flyWheel2 = Motor(Ports.PORT8, True)
 loadedOptical = Optical(Ports.PORT2)
@@ -27,12 +27,13 @@ intake = MotorGroup(intake1, intake2)
 intakeStatus = "off"
 flywheelStatus = "off"
 slowmodeScale = 1
-shutdownTime = 900
+shutdownTime = 969
 pumpStatus = "on"
 shootingMode = "low"
 flywheelMode = "fast"
 shotBalls = 0
 autoStopIntake = False
+ActiveLayout = None
 
 # pid stuff
 desiredHeading = 0
@@ -65,7 +66,8 @@ Kp = 0.968
 Ki = 0.1
 Kd = 0.05
 
-DEFAULTVELOCITY = 86.0025
+DEFAULTVELOCITY = 90
+
 PASSVELOCITY = 50
 
 forwardInput = 0
@@ -74,6 +76,11 @@ derivative = 0
 leftMotorSpeed = 0
 rightMotorSpeed = 0
 deadband = 20
+watchMode1 = flyWheel1
+WatchLabel1 = "F"
+watchMode2 = flyWheel2
+WatchLabel2 = "F"
+RemoteEnabled = True
 
 # motor settings
 flyWheel.set_max_torque(100, PERCENT)
@@ -90,6 +97,9 @@ loadedOptical.set_light(LedStateType.OFF)
 class ButtonBinding:
     button:Controller.Button
     callback:function
+    def __init__(self, button, callback) -> None:
+        self.button = button
+        self.callback = callback
 
 class ControllerLayout:
     def __init__(self, layoutTable:List, threadedList) -> None:
@@ -101,6 +111,7 @@ class ControllerLayout:
         self.threadList = []
     def AddLayout(self, binding:ButtonBinding) -> None:
         self.layoutTable.append(binding)
+
 
     def BindButtons(self):
         for buttonBinding in self.layoutTable:
@@ -135,7 +146,7 @@ def calibrate_drivetrain():
     brain.screen.next_row()
     brain.screen.print("Inertial")
     MainInertial.calibrate()
-    sleep(8,SECONDS)
+    sleep(4,SECONDS)
     vexcode_initial_drivetrain_calibration_completed = True
     brain.screen.clear_screen()
     brain.screen.set_cursor(1, 1)
@@ -152,12 +163,14 @@ def remoteControlLoop():
     global correction
     global leftMotorSpeed, rightMotorSpeed
     global deadband
+    global RemoteEnabled
     global slowmodeScale
     leftDrive.set_velocity(leftMotorSpeed, PERCENT)
     rightDrive.set_velocity(rightMotorSpeed, PERCENT)
     leftDrive.spin(FORWARD)
     rightDrive.spin(FORWARD)
     while True:
+       if RemoteEnabled:
         forwardInput = (controller.axisA.position() ) * slowmodeScale
         turnInput = (controller.axisC.position()) * slowmodeScale * -1
         if abs(forwardInput) < deadband:
@@ -220,19 +233,23 @@ def elevateFlywheel():
 def printDebugBrainValues():
     global flywheelStatus
     global error, slowmodeScale
+    global watchMode1, WatchLabel1
+    global watchMode2, WatchLabel2
     brain.screen.set_font(FontType.MONO20)
     while True:
         brain.screen.clear_screen()
         brain.screen.set_cursor(1, 1)
-        brain.screen.print("F1: " + str(flyWheel1.velocity()))
+        brain.screen.print(WatchLabel1 + ": " + str(watchMode1.velocity(PERCENT)))
         brain.screen.set_cursor(2, 1)
-        brain.screen.print("F2: " + str(flyWheel2.velocity()))
+        brain.screen.print(WatchLabel2 + ": " + str(watchMode2.velocity(PERCENT)))        
         brain.screen.set_cursor(3, 1)
         brain.screen.print("FS: " + str(flywheelStatus))
         brain.screen.set_cursor(4, 1)
         brain.screen.print("ER: " + str(error))
         brain.screen.set_cursor(5,1)
         brain.screen.print("SC: " + str(slowmodeScale))
+        print("Intake1: " + str(intake1.velocity(PERCENT)))
+        print("Intake2: " + str(intake2.velocity(PERCENT)))
         wait(50, MSEC)
 
 def toggleIntake():
@@ -322,6 +339,15 @@ def toggleIntakeLock():
     global autoStopIntake
     autoStopIntake = not autoStopIntake
 
+def TiltRight():
+    global RemoteEnabled
+    RemoteEnabled = False
+    leftDrive.spin_for(FORWARD, 45, DEGREES)
+
+def TiltLeft():
+    global RemoteEnabled
+    RemoteEnabled = False
+    rightDrive.spin_for(FORWARD, 45, DEGREES)
 
 stopDebounce = False
 def updateAutoLockIntake():
@@ -346,18 +372,177 @@ def updateAutoLockIntake():
             loadedOptical.set_light(LedStateType.OFF)
             loadedOptical.set_light(LedStateType.OFF)
 
+def bounceBall():
+    global intakeStatus
+    if intakeStatus == "in":
+        toggleIntake()
+        wait(1, SECONDS)
+        toggleIntake()
+
+def shootUpBall():
+    global shootingMode
+    if shootingMode == "low":
+        elevateFlywheel()
+        wait(0.4, SECONDS)
+        shootBall()
+def shootDownBall():
+    global shootingMode
+    if shootingMode == "high":
+        elevateFlywheel()
+        wait(0.4, SECONDS)
+        shootBall()
+
+
+LayoutText = {
+    0: "Universal",
+    1: "Skills",
+    2: "TeamworkPassing",
+    3: "TeamworkScoring",
+    4: "TeamworkHGClear",
+    5: "TeamworkEmergency"
+}
+
+
+ControllerLayoutIndex = 0
+ControllerLayoutActive = ""
+
+ControllerLayoutTables = {
+    "Universal": {
+        "Buttons" : {
+           ButtonBinding(controller.buttonRUp, toggleIntake),
+           ButtonBinding(controller.buttonRDown, stopIntake),
+           ButtonBinding(controller.buttonLUp, shootBall),
+           ButtonBinding(controller.buttonLDown, elevateFlywheel),
+           ButtonBinding(controller.buttonEUp, toggleIntakeLock),
+           ButtonBinding(controller.buttonEDown, togggleSlowMode),
+           ButtonBinding(controller.buttonFUp, toggleFlywheelSpeed),
+           ButtonBinding(controller.buttonFDown, toggleFlyWheel)
+        },
+        "Threads" : [
+            tickTimer,
+            updateAutoLockIntake,
+        ]
+    },
+    "Skills": {
+        "Buttons" : {
+           ButtonBinding(controller.buttonRUp, toggleIntake),
+           ButtonBinding(controller.buttonRDown, stopIntake),
+           ButtonBinding(controller.buttonLUp, shootUpBall),
+           ButtonBinding(controller.buttonLDown, shootDownBall),
+           ButtonBinding(controller.buttonEUp, toggleIntakeLock),
+           ButtonBinding(controller.buttonEDown, togggleSlowMode),
+           ButtonBinding(controller.buttonFUp, toggleFlywheelSpeed),
+           ButtonBinding(controller.buttonFDown, toggleFlyWheel)
+        },
+        "Threads" : [
+            tickTimer,
+            updateAutoLockIntake,
+        ]
+    },
+    "TeamworkPassing": {
+        "Buttons" : {
+           ButtonBinding(controller.buttonRUp, toggleIntake),
+           ButtonBinding(controller.buttonRDown, stopIntake),
+           ButtonBinding(controller.buttonLUp, shootBall),
+           ButtonBinding(controller.buttonLDown, elevateFlywheel),
+           ButtonBinding(controller.buttonEUp, toggleIntakeLock),
+           ButtonBinding(controller.buttonEDown, togggleSlowMode),
+           ButtonBinding(controller.buttonFUp, toggleFlywheelSpeed),
+           ButtonBinding(controller.buttonFDown, toggleFlyWheel)
+        },
+        "Threads" : [
+            tickTimer,
+            updateAutoLockIntake,
+        ]
+    },
+    "TeamworkScoring": {
+        "Buttons" : {
+           ButtonBinding(controller.buttonRUp, toggleIntake),
+           ButtonBinding(controller.buttonRDown, stopIntake),
+           ButtonBinding(controller.buttonLUp, shootBall),
+           ButtonBinding(controller.buttonLDown, elevateFlywheel),
+           ButtonBinding(controller.buttonEUp, TiltRight),
+           ButtonBinding(controller.buttonEDown, TiltLeft),
+           ButtonBinding(controller.buttonFUp, toggleFlywheelSpeed),
+           ButtonBinding(controller.buttonFDown, toggleFlyWheel)
+        },
+        "Threads" : [
+            tickTimer,
+            updateAutoLockIntake,
+        ]
+    },
+     "TeamworkHGClear": {
+        "Buttons" : {
+            ButtonBinding(controller.buttonRUp, toggleIntake),
+            ButtonBinding(controller.buttonRDown, stopIntake),
+            ButtonBinding(controller.buttonLUp, shootBall),
+            ButtonBinding(controller.buttonLDown, elevateFlywheel),
+            ButtonBinding(controller.buttonEUp, toggleIntakeLock),
+            ButtonBinding(controller.buttonEDown, togggleSlowMode),
+            ButtonBinding(controller.buttonFUp, toggleFlywheelSpeed),
+            ButtonBinding(controller.buttonFDown, toggleFlyWheel)
+        },
+        "Threads" : [
+            tickTimer,
+            updateAutoLockIntake,
+        ]
+    },
+    "TeamworkEmergency": {
+        "Buttons" : {
+            ButtonBinding(controller.buttonRUp, toggleIntake),
+            ButtonBinding(controller.buttonRDown, stopIntake),
+            ButtonBinding(controller.buttonLUp, shootBall),
+            ButtonBinding(controller.buttonLDown, elevateFlywheel),
+            ButtonBinding(controller.buttonEUp, bounceBall),
+            ButtonBinding(controller.buttonEDown, togggleSlowMode),
+            ButtonBinding(controller.buttonFUp, toggleFlywheelSpeed),
+            ButtonBinding(controller.buttonFDown, toggleFlyWheel)
+        },
+        "Threads" : [
+            tickTimer,
+            updateAutoLockIntake,
+        ]
+    },
+}
+
+def ProcessLayoutTable(layoutTable):
+    global ActiveLayout
+    ActiveLayout = ControllerLayout(layoutTable["Buttons"], layoutTable["Threads"])
+    ActiveLayout.BindButtons()
+
+
+def StartUp():
+    global ControllerLayoutIndex
+    global ControllerLayoutActive
+    brain.screen.clear_screen()
+    brain.screen.set_cursor(1,1)
+    brain.screen.print("layout:")
+    brain.screen.set_cursor(2, 1)
+    while not controller.buttonFUp.pressing():
+        brain.screen.clear_row(2)
+        brain.screen.print(LayoutText[ControllerLayoutIndex])
+        wait(50, MSEC)
+    ControllerLayoutActive = LayoutText[ControllerLayoutIndex]
+    ProcessLayoutTable(ControllerLayoutTables[LayoutText[ControllerLayoutIndex]])
+
+def addLayoutIndex():
+    global ControllerLayoutIndex
+    ControllerLayoutIndex += 1
+
+def removeLayoutIndex():
+    global ControllerLayoutIndex
+    ControllerLayoutIndex -= 1
+
+
 #comment out for tournements, dont want risk shutdown timer 
 
+
+brain.buttonRight.pressed(addLayoutIndex)
+brain.buttonLeft.pressed(removeLayoutIndex)
 healthCheckPneumatics()
+StartUp()
 Thread(tickTimer)
 Thread(updateAutoLockIntake)
 Thread(remoteControlLoop)
 Thread(printDebugBrainValues)
-controller.buttonRUp.pressed(toggleIntake)
-controller.buttonRDown.pressed(stopIntake)
-controller.buttonLUp.pressed(shootBall)
-controller.buttonLDown.pressed(elevateFlywheel)
-controller.buttonEUp.pressed(toggleIntakeLock)
-controller.buttonEDown.pressed(togggleSlowMode)
-controller.buttonFUp.pressed(toggleFlywheelSpeed)
-controller.buttonFDown.pressed(toggleFlyWheel)
+
